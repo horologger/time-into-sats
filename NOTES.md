@@ -1,10 +1,10 @@
 Inspired by https://github.com/jensgertsen/sparkkiosk
 ```sh
-docker buildx build --platform linux/arm64,linux/amd64 --tag horologger/time-into-sats:v0.0.5 --output "type=registry" .
+docker buildx build --platform linux/arm64,linux/amd64 --tag horologger/time-into-sats:v0.0.6 --output "type=registry" .
 ```
 Zilla Testing Locally
 ```
-docker buildx build --platform linux/arm64 --tag horologger/time-into-sats:v0.0.5 --load .
+docker buildx build --platform linux/arm64 --tag horologger/time-into-sats:v0.0.6 --load .
 
 ```
 
@@ -35,7 +35,7 @@ sudo ./umbrel/scripts/app restart isviable-time-into-sats
 On Zilla
 ```sh
 su - alunde
-docker pull horologger/time-into-sats:v0.0.5
+docker pull horologger/time-into-sats:v0.0.6
 mkdir -p ~/.time-into-sats/data
 ```
 First run
@@ -45,13 +45,13 @@ docker run \
 -v data:/data \
 -p 21284:21284 \
 --name time-into-sats \
--it horologger/time-into-sats:v0.0.5 
+-it horologger/time-into-sats:v0.0.6 
 ```
 
 On Ragnar
 ```sh
 su - alunde
-docker pull horologger/time-into-sats:v0.0.5
+docker pull horologger/time-into-sats:v0.0.6
 mkdir -p ~/.time-into-sats/data
 ```
 First run
@@ -67,7 +67,7 @@ docker run \
 -v cln-data:/cln:ro \
 -p 21284:21284 \
 --name time-into-sats \
--it horologger/time-into-sats:v0.0.5 
+-it horologger/time-into-sats:v0.0.6 
 
 docker run \
 -e APP_PASSWORD=TimeInto \
@@ -75,7 +75,7 @@ docker run \
 -v data:/data \
 -p 21284:21284 \
 --name time-into-sats \
--it horologger/time-into-sats:v0.0.5 
+-it horologger/time-into-sats:v0.0.6 
 
 ```
 Better runs
@@ -90,7 +90,7 @@ docker run \
 -v cln-data:/cln:ro \
 -p 8080:8080 \
 --name time-into-sats \
--it horologger/time-into-sats:v0.0.5 
+-it horologger/time-into-sats:v0.0.6 
 
 ```
 Inspect
