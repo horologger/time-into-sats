@@ -1,0 +1,1542 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+    <head>
+    <meta charset="utf-8" />
+    <title>Time Into Crypto</title>
+    <script>
+    var bitcoinPrice = 0;
+    var invoicePeriod = 60;
+    function log(message)
+    {
+        console.log(message);
+        var loggdiv = document.getElementById("logger");
+        if (loggdiv) {
+            loggdiv.innerHTML = loggdiv.innerHTML + "\n" + message;
+            loggdiv.scrollTop = loggdiv.scrollHeight;
+        }
+    }
+    </script>
+
+    <script>
+    (function () {
+        var onWindowLoad = function () {
+            
+            var loadScript = function (src, callback) {
+            
+                var element = document.createElement("script");
+                    element.src = src;
+                    element.async = true;
+                    document.body.appendChild(element);
+                    
+                    if (callback) {
+                    
+                        element.onreadystatechange = function () {
+                            if (this.readyState === "loaded" || this.readyState === "complete") { 
+                                callback();
+                            }
+                        };
+                        element.onload = callback;
+                    }
+            },
+            
+            loadArticleScript = function () {
+                // checkForAuthToken();
+            };
+            loadScript("jquery.min.js", loadArticleScript);
+        };
+
+        if (window.addEventListener) {
+            window.addEventListener("load", onWindowLoad, false);
+        } else if (window.attachEvent) {
+            window.attachEvent("onload", onWindowLoad);
+        } else {
+            window.onload = onWindowLoad;
+        }
+    }());			
+
+    function doGetNick()
+    {
+
+        var pathAndParams = '{{base}}/getNickFromPubKey';
+
+        xhr = new XMLHttpRequest();
+        xhr.open('POST', pathAndParams);
+
+        xhr.setRequestHeader("Content-Type", "application/json");
+        xhr.setRequestHeader("Accept", "application/json");
+
+        var request_obj = { 
+            "pubkey": document.getElementById("lnpubkey-field").value
+        };
+
+        xhr.onload = function() {
+            
+            if (xhr.status == 200) {
+
+                var isJsonBody = false;
+                var headers = xhr.getAllResponseHeaders();
+                const hdrs = headers.split('\r\n');
+                hdrs.forEach(function(hdr){
+                    var parts = hdr.split(':');
+                    if (parts[0] == "content-type") {
+                        var bits = parts[1].split(';');
+                        if (bits[0].trim() == "application/json") {
+                            isJsonBody = true;
+                        }
+                    }
+                });
+
+                if (isJsonBody) {
+                    var response = JSON.parse(xhr.responseText);
+                    log(response);
+                    document.getElementById("nick").value = response.nick;
+                    // if (window.location.href.search("tenantid") < 0) {
+                    //     window.location.href = window.location.href + "?tenantid=" + response.tenant;
+                    // }
+                }
+            } 
+            else {
+                document.getElementById("nick").innerHTML = "Unexpected";
+            }
+        };
+
+        xhr.send(JSON.stringify(request_obj));
+
+    }
+
+    async function getLNPubKey(req, res) {
+        try {
+            // const webln = await WebLN.requestProvider();
+            const info = await window.webln.getInfo();
+            if (typeof info.node.pubkey == 'undefined') {
+                document.getElementById("lnpubkey-field").value = "Alby accounts do not have a pubkey.";
+            } else {
+                document.getElementById("lnpubkey-field").value = info.node.pubkey;
+            }
+            document.getElementById("nick").value = info.node.alias;
+            // doGetNick();
+        }
+        catch(err) {
+            // Tell the user what went wrong
+            log(err.message);
+            alert(err.message);
+        }
+    };
+
+    async function enableWebLN() {
+        log("enabling WebLN");
+        await window.webln.enable();
+        log("WebLN enabled");
+        await getLNPubKey(null, null);
+        log("got LNPubKey");
+        await getNostrPubKey();
+        log("got NostrPubKey");
+        
+    };
+
+    // https://github.com/getAlby/js-sdk
+    function existsWebLN() {
+        // if (((typeof window.webln) == "object") && ((typeof window.webln.enabled) == "boolean")) {
+        if (typeof window.webln !== 'undefined') {
+            document.getElementById("prereqs").style.display = "none";
+            document.getElementById("slotsboard").style.display = "none";
+            document.getElementById("mainsection").style.display = "block";
+            log("WebLN found");
+            (async function() {
+                await enableWebLN();
+            })();
+        }
+        else {
+            document.getElementById("prereqs").style.display = "block";
+            document.getElementById("mainsection").style.display = "none";
+            log("WebLN not found");
+        }
+    };
+
+    async function makeInvoice(amount, memo = "TimeIntoCrypto") {
+        try {
+            const invoice = await window.webln.makeInvoice( { amount: amount , defaultMemo: memo} );
+        }
+        catch(err) {
+            // Tell the user what went wrong
+            log(err.message);
+            alert(err.message);
+        }
+        return(invoice);
+    };
+
+    var nostrPubKey = "unknown";
+
+    var loc_href = "http://localhost:8080/?hpk=7bde...72a5&relay=wss://domas.io";   // urlencoded??
+    var loc_proto = "http:";
+    var loc_host = "localhost:8080";    // actually host:port
+    var loc_http = "http://localhost:8080";
+    var hpk = "aaabbb";
+    var relay = "wss://relay.primal.net"
+
+
+    var inProcessSlotID = "unknown";
+
+    function setCurrencySelect() {
+        log("setCurrencySelect");
+        var currencySelect = document.getElementById("currency-input");
+        // var currencyArray = ["usd", "eur", "gbp", "jpy", "cny", "cad", "aud", "chf", "sek", "nok", "dkk", "rub", "inr", "brl", "try", "zar", "hkd", "sgd", "krw", "mxn", "idr", "myr", "php", "thb", "vnd", "pln", "czk", "huf", "ils", "clp", "php", "cop", "ars", "pen", "uah", "kzt", "kgs", "uzs", "azn", "gel", "amd", "byn", "tjs", "afn", "irr", "iqd", "syp", "lbp", "jod", "egp", "sar", "aed", "qar", "omr", "bhd", "kwd"];
+        // CoinGecko supported currencies
+        var currencyArray = [ "usd", "aed", "ars", "aud", "bdt", "bhd", "bmd", "brl", "cad", "chf", "clp", "cny", "czk", "dkk", "eur", "gbp", "gel", "hkd", "huf", "idr", "ils", "inr", "jpy", "krw", "kwd", "lkr", "mmk", "mxn", "myr", "ngn", "nok", "nzd", "php", "pkr", "pln", "rub", "sar", "sek", "sgd", "thb", "try", "twd", "uah", "vef", "vnd", "zar"];
+
+        // Clear existing options
+        currencySelect.innerHTML = '';
+
+        currencyArray.forEach(function(currency) {
+            var option = document.createElement("option");
+            option.text = currency.toUpperCase();
+            option.value = currency;
+            currencySelect.add(option);
+        });
+    }
+
+    // setCurrencySelect();
+
+    function getUserInfo(user) {
+        log("getUserInfo: " + user);
+        connection.send(JSON.stringify({action: "getUserInfo", user: user}));
+    }
+
+    function setUserInfo(userInfo) {
+        log("setUserInfo: " + JSON.stringify(userInfo, null, 2));
+        if (userInfo.relay != '') {
+            document.getElementById("relay-input").value = userInfo.relay;
+        } else {
+            document.getElementById("relay-input").value = "wss://relay.primal.net";
+        }
+        relay = document.getElementById("relay-input").value;
+        if (userInfo.currency != '') {
+            document.getElementById("currency-input").value = userInfo.currency;
+        } else {
+            document.getElementById("currency-input").value = "usd";
+        }
+        // document.getElementById("board-currency-header").innerHTML = (document.getElementById("currency-input").value).toUpperCase();
+        document.getElementById("slots-currency-header").innerHTML = (document.getElementById("currency-input").value).toUpperCase();
+        document.getElementById("hostport-field").value = userInfo.hostport;
+        document.getElementById("base64cert-field").value = userInfo.base64cert;
+        document.getElementById("base64macaroon-field").value = userInfo.base64macaroon;
+        setScheduleLink();
+    }
+
+    function getHrefParts() {
+        log("getHrefParts");
+        loc_href = window.document.location.href;
+        log("loc_href: " + loc_href);
+        loc_proto = window.document.location.protocol;
+        log("loc_proto: " + loc_proto);
+        loc_host = window.document.location.host;
+        log("loc_host: " + loc_host);
+        loc_http = window.document.location.origin;
+        const queryString = window.location.search;
+        console.log(queryString);
+        const urlParams = new URLSearchParams(queryString);
+
+        if (urlParams.has('hpk')) {
+            hpk = urlParams.get('hpk');
+        } else {
+            hpk = nostrPubKey;
+        }
+
+        log("hpk: " + hpk);
+
+        if (urlParams.has('relay')) {   // wss%3A%2F%2Frelay.getalby.com%2Fv1
+            relay = urlParams.get('relay');
+        }
+        log("relay: " + relay);
+
+        // document.getElementById("slotsboard-title").innerHTML = loc_host;
+    }
+
+    getHrefParts();
+
+    function setScheduleLink() {
+        log("setScheduleLink");
+        document.getElementById("relay-input").value = relay;
+        var sched_link = loc_http + "/?hpk=" + nostrPubKey + "&relay=" + relay;
+            document.getElementById("schedule-link").href = sched_link;
+            document.getElementById("schedule-link").innerHTML = "My Schedule Link: " + sched_link;
+            if (hpk != nostrPubKey) {
+                document.getElementById("mode-button").innerHTML = "Create TimeSlots";
+                // document.getElementById("row00").style.visibility = 'hidden';    // Make Add TimeSlot row hidden
+                document.getElementById("row00").style.display = "none"; 
+            } else {
+                document.getElementById("mode-button").innerHTML = "Reserve TimeSlots";
+                // document.getElementById("row00").style.visibility = 'visible';    // Make Add TimeSlot row visible
+                // document.getElementById("row00").style.display = "block"; 
+            }
+    }
+
+    function getScheduleLink(creator) {
+        log("getScheduleLink");
+        var sched_link = loc_http + "/?hpk=" + creator + "&relay=" + relay;
+        return(sched_link);
+    }
+
+    function getTimeSlots(hpk) {
+        log("getTimeSlots: " + hpk);
+        connection.send(JSON.stringify({action: "getTimeSlots", hpk: hpk}));
+    }
+
+    function getBoardSlots() {
+        log("getBoardSlots");
+        connection.send(JSON.stringify({action: "getBoardSlots"}));
+    }
+
+    function clearTimeSlots() {
+        log("clearTimeSlots");
+        var tstable = document.getElementById("time-slots-table");
+        while (tstable.rows.length > 2) {   // Save the first row as the input row for new entries
+            tstable.deleteRow(-1);
+        }
+    }
+
+    function clearBoardSlots() {
+        log("clearBoardSlots");
+        var bstable = document.getElementById("slotsboard-table");
+        while (bstable.rows.length > 1) {  
+            bstable.deleteRow(-1);
+        }
+    }
+
+    function hexAddrShorten(addr, len = 8) {
+        return (addr.substring(0,len) + "..." + addr.substring((addr.length-len),(addr.length-0)));
+    }
+
+
+    function redrawTimeSlots(slots) {
+        log("redrawTimeSlots");
+        clearTimeSlots();
+
+                // recalcQuote("recalc");
+        var tstable = document.getElementById("time-slots-table");
+        var ridx = 0;
+        var newRow = {};
+        var newCell = {};
+        if (slots.length == 0) {
+            newRow = tstable.insertRow(-1);
+            newCell = newRow.insertCell(ridx++);
+            newCell.colSpan = 17;
+            newCell.innerHTML = "No TimeSlots Created for: " + hexAddrShorten(hpk) + " yet.";
+        }
+        slots.forEach(function(slot) {
+
+            log("slot: " + JSON.stringify(slot, null, 2));
+            ridx = 0;
+            var sDate = new Date(parseInt(slot.start) * 1000);
+            var ts_year = sDate.getFullYear();
+            var ts_month = sDate.getMonth() + 1;
+            if (ts_month < 10) { ts_month = "0" + ts_month; }
+            var ts_day = sDate.getDate();
+            if (ts_day < 10) { ts_day = "0" + ts_day; }
+            var ts_hour = sDate.getHours();
+            if (ts_hour < 10) { ts_hour = "0" + ts_hour; }
+            var ts_minute = sDate.getMinutes();
+            if (ts_minute < 10) { ts_minute = "0" + ts_minute; }
+            var sDuration = Math.round(parseInt(slot.duration) / 60);
+
+            const confDateTime = ts_year + "-" + ts_month + "-" + ts_day + " " + ts_hour + ":" + ts_minute;
+
+            // Need satsmin and usd for checking if the price is still acceptable
+
+            var ts_satsmin = parseInt(slot.satsmin);
+            var ts_quote = parseFloat(slot.quote);
+            var ts_currency = "";   // USD, EUR, GBP, etc.
+
+            newRow = tstable.insertRow(-1);
+            newCell = newRow.insertCell(ridx++);
+            newCell.innerHTML = "<input type='text' size='4' disabled value='" + ts_year + "'/>";
+            newCell = newRow.insertCell(ridx++);
+            newCell.innerHTML = "-";
+            newCell = newRow.insertCell(ridx++);
+            newCell.innerHTML = "<input type='text' size='2' disabled value='" + ts_month + "'/>";
+            newCell = newRow.insertCell(ridx++);
+            newCell.innerHTML = "-";
+            newCell = newRow.insertCell(ridx++);
+            newCell.innerHTML = "<input type='text' size='2' disabled value='" + ts_day + "'/>";
+            newCell = newRow.insertCell(ridx++);
+            newCell.innerHTML = "&nbsp;";
+            newCell = newRow.insertCell(ridx++);
+            newCell.innerHTML = "<input type='text' size='2' disabled value='" + ts_hour + "'/>";
+            newCell = newRow.insertCell(ridx++);
+            newCell.innerHTML = ":";
+            newCell = newRow.insertCell(ridx++);
+            newCell.innerHTML = "<input type='text' size='2' disabled value='" + ts_minute + "'/>";
+            newCell = newRow.insertCell(ridx++);
+            newCell.innerHTML = "&nbsp;";
+            newCell = newRow.insertCell(ridx++);
+            newCell.innerHTML = "<input type='text' size='4' style='text-align: right;' disabled value='" + sDuration + "'/>";
+            newCell = newRow.insertCell(ridx++);
+            newCell.innerHTML = "&nbsp;";
+            newCell = newRow.insertCell(ridx++);
+            newCell.innerHTML = "<input type='text' size='6' style='text-align: right;' disabled value='" + ts_satsmin + "'/>";
+            newCell = newRow.insertCell(ridx++);
+            newCell.innerHTML = "&nbsp;";
+            newCell = newRow.insertCell(ridx++);
+            newCell.innerHTML = "<input type='text' size='7' style='text-align: right;' disabled value='" + ts_quote + "'/>";
+            newCell = newRow.insertCell(ridx++);
+            newCell.innerHTML = "&nbsp;";
+            newCell = newRow.insertCell(ridx++);
+            if (slot.state == "created") {
+                if (hpk != nostrPubKey) {
+                    newCell.innerHTML = "<button onclick='resTSrow(" + '"' + slot.id + '"' + ")'  style='visibility: block'>Reserve TimeSlot</button> slot.id: " + slot.id + " slot.state: " + slot.state;
+                } else {
+                    newCell.innerHTML = "<button onclick='delTSrow(" + '"' + slot.id + '"' + ")'  style='visibility: block'>Delete TimeSlot</button> slot.id: " + slot.id + " slot.state: " + slot.state;
+                }
+            } else if (slot.state == "reserved") {
+                if (hpk != nostrPubKey) {
+                    newCell.innerHTML = "<button onclick='resTSrow(" + '"' + slot.id + '"' + ")'  style='visibility: block; color: black; background-color: #fafa88' disabled>Awaiting Confirmation</button> slot.id: " + slot.id + " slot.state: " + slot.state + " by " + (slot.reservor).substring(0,8);
+                } else {
+                    newCell.innerHTML = "<button onclick='cnfTSrow(" + '"' + slot.id + '",' + '"' + slot.start + '",' + '"' + confDateTime + '",' + '"' + slot.reservor + '"' + ")'  style='visibility: block; background-color: #fafa88'>Confirm Reservation</button> slot.id: " + slot.id + " slot.state: " + slot.state + " by " + (slot.reservor).substring(0,8);
+                }
+            } else if (slot.state == "confirmed") {
+                if (hpk != nostrPubKey) {
+                    newCell.innerHTML = "<button onclick='delTSrow(" + '"' + slot.id + '"' + ")'  style='visibility: block; color: black; background-color: #d0f0d0' disabled>Confirmed Reservation</button> slot.id: " + slot.id + " slot.state: " + slot.state + " by " + (slot.creator).substring(0,8);  // Maybe a countdown timer to the start of the slot
+                } else {
+                    newCell.innerHTML = "<button onclick='delTSrow(" + '"' + slot.id + '"' + ")'  style='visibility: block; background-color: #d0f0d0' >Confirmed Reservation</button> slot.id: " + slot.id + " slot.state: " + slot.state + " by " + (slot.creator).substring(0,8) + " for " + (slot.reservor).substring(0,8);
+                }
+                inProcessSlotID = slot.id;
+            } else if (slot.state == "in_progress") {
+                if (hpk != nostrPubKey) {
+                    newCell.innerHTML = "<button onclick='delTSrow(" + '"' + slot.id + '"' + ")'  style='visibility: block; color: black; background-color: #d0d0d0' disabled>In Progress</button> slot.id: " + slot.id + " slot.state: " + slot.state + " by " + (slot.creator).substring(0,8);  // Maybe a countdown timer to the start of the slot
+                } else {
+                    newCell.innerHTML = "<button onclick='delTSrow(" + '"' + slot.id + '"' + ")'  style='visibility: block; background-color: #d0d0d0' >In Progress</button> slot.id: " + slot.id + " slot.state: " + slot.state + " by " + (slot.creator).substring(0,8) + " for " + (slot.reservor).substring(0,8);
+                }
+                inProcessSlotID = slot.id;
+            } else if (slot.state == "paused_reservor") {
+                if (hpk != nostrPubKey) {
+                    newCell.innerHTML = "<button onclick='delTSrow(" + '"' + slot.id + '"' + ")'  style='visibility: block; color: black; background-color: #d0d0d0' disabled>Reservor Paused</button> slot.id: " + slot.id + " slot.state: " + slot.state + " by " + (slot.creator).substring(0,8);  // Maybe a countdown timer to the start of the slot
+                } else {
+                    newCell.innerHTML = "<button onclick='delTSrow(" + '"' + slot.id + '"' + ")'  style='visibility: block; background-color: #d0d0d0' >Reservor Paused</button> slot.id: " + slot.id + " slot.state: " + slot.state + " by " + (slot.creator).substring(0,8) + " for " + (slot.reservor).substring(0,8);
+                }
+                inProcessSlotID = slot.id;
+            } else if (slot.state == "paused_creator") {
+                if (hpk != nostrPubKey) {
+                    newCell.innerHTML = "<button onclick='delTSrow(" + '"' + slot.id + '"' + ")'  style='visibility: block; color: black; background-color: #d0d0d0' disabled>Creator Paused</button> slot.id: " + slot.id + " slot.state: " + slot.state + " by " + (slot.creator).substring(0,8);  // Maybe a countdown timer to the start of the slot
+                } else {
+                    newCell.innerHTML = "<button onclick='delTSrow(" + '"' + slot.id + '"' + ")'  style='visibility: block; background-color: #d0d0d0' >Creator Paused</button> slot.id: " + slot.id + " slot.state: " + slot.state + " by " + (slot.creator).substring(0,8) + " for " + (slot.reservor).substring(0,8);
+                }
+                inProcessSlotID = slot.id;
+            } else if (slot.state == "paused_pending_payment") {
+                if (hpk != nostrPubKey) {
+                    newCell.innerHTML = "<button onclick='delTSrow(" + '"' + slot.id + '"' + ")'  style='visibility: block; color: black; background-color: #d0d0d0' disabled>Paused Pending Payment</button> slot.id: " + slot.id + " slot.state: " + slot.state + " by " + (slot.creator).substring(0,8);  // Maybe a countdown timer to the start of the slot
+                } else {
+                    newCell.innerHTML = "<button onclick='delTSrow(" + '"' + slot.id + '"' + ")'  style='visibility: block; background-color: #d0d0d0' >Paused Pending Payment</button> slot.id: " + slot.id + " slot.state: " + slot.state + " by " + (slot.creator).substring(0,8) + " for " + (slot.reservor).substring(0,8);
+                }
+                inProcessSlotID = slot.id;
+            } else if (slot.state == "completed") {
+                if (hpk != nostrPubKey) {
+                    newCell.innerHTML = "<button onclick='delTSrow(" + '"' + slot.id + '"' + ")'  style='visibility: block; color: black; background-color: #d0d0d0' disabled>Completed</button> slot.id: " + slot.id + " slot.state: " + slot.state + " by " + (slot.creator).substring(0,8);  // Maybe a countdown timer to the start of the slot
+                } else {
+                    newCell.innerHTML = "<button onclick='delTSrow(" + '"' + slot.id + '"' + ")'  style='visibility: block; background-color: #d0d0d0' >Completed</button> slot.id: " + slot.id + " slot.state: " + slot.state + " by " + (slot.creator).substring(0,8) + " for " + (slot.reservor).substring(0,8);
+                }
+                document.getElementById("session-message").innerHTML = "Session Completed";
+            } else if (slot.state == "expired") {
+                if (hpk != nostrPubKey) {
+                    newCell.innerHTML = "<button onclick='delTSrow(" + '"' + slot.id + '"' + ")'  style='visibility: block; color: black; background-color: #d0d0d0' disabled>Expired</button> slot.id: " + slot.id + " slot.state: " + slot.state + " by " + (slot.creator).substring(0,8);  // Maybe a countdown timer to the start of the slot
+                } else {
+                    newCell.innerHTML = "<button onclick='delTSrow(" + '"' + slot.id + '"' + ")'  style='visibility: block; background-color: #d0d0d0' >Expired</button> slot.id: " + slot.id + " slot.state: " + slot.state + " by " + (slot.creator).substring(0,8) + " for " + (slot.reservor).substring(0,8);
+                }
+                document.getElementById("session-message").innerHTML = "Session Completed";
+            } else {
+                console.log("Unhandled slot state: " + slot.state + " for slot.id: " + slot.id);
+            }
+        });
+    }
+
+    function redrawBoardSlots(slots) {
+        log("redrawBoardSlots");
+        clearBoardSlots();
+
+                // recalcQuote("recalc");
+        var bstable = document.getElementById("slotsboard-table");
+        var ridx = 0;
+        var newRow = {};
+        var newCell = {};
+        if (slots.length == 0) {
+            newRow = bstable.insertRow(-1);
+            newCell = newRow.insertCell(ridx++);
+            newCell.colSpan = 17;
+            newCell.innerHTML = "No TimeSlots Created yet.";
+        }
+        slots.forEach(function(slot) {
+            if (slot.state == "created") {
+
+                log("slot: " + JSON.stringify(slot, null, 2));
+                ridx = 0;
+                var sDate = new Date(parseInt(slot.start) * 1000);
+                var ts_year = sDate.getFullYear();
+                var ts_month = sDate.getMonth() + 1;
+                if (ts_month < 10) { ts_month = "0" + ts_month; }
+                var ts_day = sDate.getDate();
+                if (ts_day < 10) { ts_day = "0" + ts_day; }
+                var ts_hour = sDate.getHours();
+                if (ts_hour < 10) { ts_hour = "0" + ts_hour; }
+                var ts_minute = sDate.getMinutes();
+                if (ts_minute < 10) { ts_minute = "0" + ts_minute; }
+                var sDuration = Math.round(parseInt(slot.duration) / 60);
+
+                const confDateTime = ts_year + "-" + ts_month + "-" + ts_day + " " + ts_hour + ":" + ts_minute;
+
+                // Need satsmin and usd for checking if the price is still acceptable
+
+                var ts_satsmin = parseInt(slot.satsmin);
+                var ts_quote = parseFloat(slot.quote);
+                var ts_currency = (slot.currency).toUpperCase();   // USD, EUR, GBP, etc.
+
+                newRow = bstable.insertRow(-1);
+                newCell = newRow.insertCell(ridx++);
+                newCell.innerHTML = "<input type='text' size='4' disabled value='" + ts_year + "'/>";
+                newCell = newRow.insertCell(ridx++);
+                newCell.innerHTML = "-";
+                newCell = newRow.insertCell(ridx++);
+                newCell.innerHTML = "<input type='text' size='2' disabled value='" + ts_month + "'/>";
+                newCell = newRow.insertCell(ridx++);
+                newCell.innerHTML = "-";
+                newCell = newRow.insertCell(ridx++);
+                newCell.innerHTML = "<input type='text' size='2' disabled value='" + ts_day + "'/>";
+                newCell = newRow.insertCell(ridx++);
+                newCell.innerHTML = "&nbsp;";
+                newCell = newRow.insertCell(ridx++);
+                newCell.innerHTML = "<input type='text' size='2' disabled value='" + ts_hour + "'/>";
+                newCell = newRow.insertCell(ridx++);
+                newCell.innerHTML = ":";
+                newCell = newRow.insertCell(ridx++);
+                newCell.innerHTML = "<input type='text' size='2' disabled value='" + ts_minute + "'/>";
+                newCell = newRow.insertCell(ridx++);
+                newCell.innerHTML = "&nbsp;";
+                newCell = newRow.insertCell(ridx++);
+                newCell.innerHTML = "<input type='text' size='4' style='text-align: right;' disabled value='" + sDuration + "'/>";
+                newCell = newRow.insertCell(ridx++);
+                newCell.innerHTML = "&nbsp;";
+                newCell = newRow.insertCell(ridx++);
+                newCell.innerHTML = "<input type='text' size='6' style='text-align: right;' disabled value='" + ts_satsmin + "'/>";
+                newCell = newRow.insertCell(ridx++);
+                newCell.innerHTML = ts_currency;
+                newCell = newRow.insertCell(ridx++);
+                newCell.innerHTML = "<input type='text' size='7' style='text-align: right;' disabled value='" + ts_quote + "'/>";
+                newCell = newRow.insertCell(ridx++);
+                newCell.innerHTML = "&nbsp;";
+                newCell = newRow.insertCell(ridx++);
+                newCell.innerHTML = '<a href="' + getScheduleLink(slot.creator) + '" style="color: white">' + shortenString(slot.creator) + ' Schedule</a>';
+            } else {
+                console.log("Unhandled slot state: " + slot.state + " for slot.id: " + slot.id);
+            }
+        });
+    }
+
+    function shortenString(str) {
+        if (str.length <= 12) {
+        return str;
+        }
+    
+        const first = str.substring(0, 6);
+        const last = str.substring(str.length - 3);
+    
+        const dots = '.'.repeat(3);
+    
+        return `${first}${dots}${last}`;
+    }
+
+
+    function addTimeSlot(hpk, start, duration, satsmin, quote) {
+        log("addTimeSlot: " + hpk);
+        connection.send(JSON.stringify({action: "addTimeSlot", hpk: hpk, start: start, duration: duration, satsmin: satsmin, quote: quote, currency: document.getElementById("currency-input").value }));
+        getBoardSlots();
+    }
+
+    function delTimeSlot(deletor_hpk, slotID) {
+        log("delTimeSlot: " + deletor_hpk + " slotID: " + slotID);
+        connection.send(JSON.stringify({action: "delTimeSlot", hpk: deletor_hpk, slotID: slotID}));
+        getTimeSlots(hpk);
+        getBoardSlots();
+    }
+
+    function resTimeSlot(reservor_hpk, slotID) {
+        log("resTimeSlot: " + hpk + " by " + reservor_hpk + " slotID: " + slotID);
+        connection.send(JSON.stringify({action: "resTimeSlot", hpk: reservor_hpk, slotID: slotID}));
+        var msg = hexAddrShorten(reservor_hpk) + " requests you confirm this registration. \n";
+        msg += "slotID:" + slotID + " \n";
+        msg += "Use the link below to confirm: \n";
+        msg += `${loc_http}/?relay=${relay}\n`;
+
+        postDMto(msg, hpk).then((response) => {
+            console.log("response: " + response);
+            getTimeSlots(hpk);  // This is the global hpk of the other user's slots currnetly being viewed
+        }).catch((error) => {
+            console.error("error: " + error);
+        })
+    }
+
+    function cnfTimeSlot(hpk, slotID, slotStart, dateTimeStr, reservor) {
+        log("cnfTimeSlot: " + hpk + " slotID: " + slotID);
+        connection.send(JSON.stringify({action: "cnfTimeSlot", hpk: hpk, slotID: slotID}));
+        var msg = "Your reservation has been confirmed. \n";
+        msg += "slotID:" + slotID + " \n";
+        msg += "Use the link below five minutes before " + dateTimeStr + " to join: \n";
+        msg += `${loc_http}/?relay=${relay}\n`;
+
+        const startDate = Math.floor(parseInt(slotStart)/1000);
+        console.log("startDate: " + startDate);
+        const startDateIn1Day = startDate - (24 * 60 * 60);
+        const startDateIn1Hr = startDate - (60 * 60);
+        // const startDateIn5Mins = startDate - (5 * 60);
+        // For testing, set the start time to 5 minutes from now
+        // const startDateIn1Day = startDate - (60);
+        // const startDateIn1Hr = startDate - (30);
+        const startDateIn5Mins = startDate - (15);
+        postDMto(msg, reservor).then((response) => {
+            // console.log("response: " + response);
+            // getTimeSlots(hpk);  // This is the global hpk of the other user's slots currnetly being viewed
+            msg = "Your reservation for tomorrow has been confirmed. \n";
+            msg += "slotID:" + slotID + " \n";
+            msg += "Use the link below five minutes before " + dateTimeStr + " to join: \n";
+            msg += `${loc_http}/?relay=${relay}\n`;
+            deferDMto(msg, reservor, startDateIn1Day).then((response) => {
+                // console.log("response: " + response);
+                // getTimeSlots(hpk);  // This is the global hpk of the other user's slots currnetly being viewed
+                msg = "Your reservation time is in one hour. \n";
+                msg += "slotID:" + slotID + " \n";
+                msg += "Use the link below five minutes before " + dateTimeStr + " to join: \n";
+                msg += `${loc_http}/?relay=${relay}\n`;
+                deferDMto(msg, reservor, startDateIn1Hr).then((response) => {
+                    // console.log("response: " + response);
+                    msg = "Your reservation time is in five minutes. \n";
+                    msg += "slotID:" + slotID + " \n";
+                    msg += "Use the link below to join: \n";
+                    msg += `${loc_http}/?relay=${relay}\n`;
+                    deferDMto(msg, reservor, startDateIn5Mins).then((response) => {
+                        // console.log("response: " + response);
+                        getTimeSlots(hpk);  // This is the global hpk of the other user's slots currnetly being viewed
+                    }).catch((error) => {
+                        console.error("error: " + error);
+                    })
+                }).catch((error) => {
+                    console.error("error: " + error);
+                })
+            }).catch((error) => {
+                console.error("error: " + error);
+            })
+        }).catch((error) => {
+            console.error("error: " + error);
+        })
+    }
+
+    function doPause() {
+        log("doPause");
+        connection.send(JSON.stringify({action: "pause", hpk: hpk, pauser: nostrPubKey, slotID: inProcessSlotID}));
+    }   
+
+    function doResume() {
+        log("doResume");
+        connection.send(JSON.stringify({action: "resume", hpk: hpk, resumer: nostrPubKey, slotID: inProcessSlotID}));
+    }
+
+    function doEnd() {
+        log("doEnd");
+        connection.send(JSON.stringify({action: "end", hpk: hpk, ender: nostrPubKey, slotID: inProcessSlotID}));
+    }   
+
+    function relocateHome() {
+        log("relocateHome");
+        window.location.href = loc_http;
+    }
+
+    function toggleBoard() {
+        log("toggleBoard");
+        const bt = document.getElementById("board-toggle");
+        if (bt.innerHTML == "vvv") {
+            bt.innerHTML = "^^^";
+            document.getElementById("slotsboard").style.display = "block";
+        } else {
+            bt.innerHTML = "vvv";
+            document.getElementById("slotsboard").style.display = "none";
+        }
+    }
+
+    function toggleConfig() {
+        log("toggleConfig");
+        const bt = document.getElementById("config-button");
+        if (bt.innerHTML == "Config") {
+            bt.innerHTML = "Save";
+            document.getElementById("config-settings").style.display = "block";
+            document.getElementById("relay-input").disabled = false;
+            document.getElementById("currency-input").disabled = false;
+        } else {    // Save Logic
+            bt.innerHTML = "Config";
+            document.getElementById("config-settings").style.display = "none";
+            document.getElementById("relay-input").disabled = true;
+            document.getElementById("currency-input").disabled = true;
+            relay = document.getElementById("relay-input").value;
+            const currency = document.getElementById("currency-input").value;
+            const hostport = document.getElementById("hostport-field").value;
+            const base64cert = document.getElementById("base64cert-field").value;
+            const base64macaroon = document.getElementById("base64macaroon-field").value;
+            const tosend = {
+                action: "update-user",
+                user: nostrPubKey,
+                relay: relay,
+                currency: currency
+            };
+            if (typeof hostport != "undefined") {
+                tosend.hostport = hostport;
+            }
+            if (typeof base64cert != "undefined") {
+                tosend.base64cert = base64cert;
+            }
+            if (typeof base64macaroon != "undefined") {
+                tosend.base64macaroon = base64macaroon;
+            }
+
+            connection.send(JSON.stringify(tosend));
+            setScheduleLink();
+            getCryptoPrice("bitcoin", currency);
+            // document.getElementById("board-currency-header").innerHTML = (document.getElementById("currency-input").value).toUpperCase();
+            document.getElementById("slots-currency-header").innerHTML = (document.getElementById("currency-input").value).toUpperCase();
+            recalcQuote("recalc");
+        }
+    }
+
+    function deleteUser() {
+        log("deleteUser");
+        connection.send(JSON.stringify({action: "delete-user", user: hpk}));
+    }
+
+    function getCryptoPrice(crypto, currency) {
+        log("getCryptoPrice");
+        connection.send(JSON.stringify({action: "get-crypto-price", user: hpk, crypto: crypto, currency: currency }));
+    }   
+
+    var connection = null;
+
+    function reconnect() {
+
+        var wsproto = "wss:";
+        if (loc_proto == "http:") {
+            wsproto = "ws:";
+        }
+        connection = new WebSocket(wsproto + "//" + loc_host + "/?" + "eehpk=" + hpk + "&" + "orhpk=" + nostrPubKey);
+
+        connection.onopen = () => {
+            log("connected");
+            // connection.send("1A37F239BC1");
+            // connection.send(JSON.stringify({action: "info", hpk: nostrPubKey, relay: relay}));
+            connection.send(JSON.stringify({action: "info", hpk: hpk, relay: relay}));
+            document.getElementById("conn-status").style.backgroundColor = "#32d40d";   // green
+            setTSdefaults();
+            getTimeSlots(hpk);
+            getBoardSlots();
+            getUserInfo(hpk);
+            getCryptoPrice("bitcoin", document.getElementById("currency-input").value);
+            // setScheduleLink();
+        };
+
+        connection.onclose = () => {
+            console.error("disconnected");
+            document.getElementById("conn-status").style.backgroundColor = "#d40d1e";   // red
+        };
+
+        connection.onerror = error => {
+            console.error("failed to connect", error);
+        };
+
+        connection.onmessage = event => {
+            // log("received", event.data);
+
+            // let li = document.createElement("li");
+            // li.innerText = event.data;
+            // document.querySelector("#chat").append(li);
+            // let nick = document.querySelector("#nick").value;
+            
+            // Attempt to parse as JSON
+            try {
+                var json = JSON.parse(event.data);
+                if (json.type == "invoice") {
+                        log("Invoice Sent!");
+                        document.getElementById("invoice").innerHTML = json.invoice;
+                        testLN04();
+                } else if (json.type == "info"){
+                    document.getElementById("receiver-info").innerHTML = json.info;
+                } else if (json.type == "time"){
+                    document.getElementById("server-time").innerHTML = json.time;
+                    setTSdefaults();    // Enable for testing, but not needed
+                } else if (json.type == "price"){
+                    bitcoinPrice = parseInt(json.price);
+                    document.getElementById("webln-div").innerHTML = bitcoinPrice;
+                    recalcQuote("recalc");
+                } else if (json.type == "timeslots"){
+                    redrawTimeSlots(json.slots);
+                } else if (json.type == "boardslots"){
+                    console.log("boardslots: " + JSON.stringify(json.slots, null, 2));
+                    redrawBoardSlots(json.slots);
+                    document.getElementById("slotsboard-title").innerHTML = loc_host;
+                } else if (json.type == "pending-session"){
+                    log("pending-session: in " + json.insecs);
+                    document.getElementById("session-message").innerHTML = "Session starting in " + json.insecs + " seconds";
+                } else if (json.type == "session-info"){
+                    log("session-info: " + json.infoMsg);
+                    document.getElementById("session-message").innerHTML = json.infoMsg;
+                } else if (json.type == "in-progress"){
+                    log("in-progress: for " + json.forsecs);
+                    document.getElementById("session-message").innerHTML = "Session in progress for " + json.forsecs + " seconds" + " " + json.nextInvoice + " " + json.secsremaining + " " + json.durperc + " " + json.invperc + " " + json.invsoon + " " + json.invnow;
+                    document.getElementById("session-controls").style.display = "block";
+                    document.getElementById("session-progress").style.width = json.durperc + "%";
+                    document.getElementById("session-progress").style.backgroundColor = "#bee35f";   // green
+                    document.getElementById("invoice-countdown").style.width = json.invperc + "%";
+                    log ("invsoon: " + json.invsoon);
+                    if (json.invsoon) {
+                        document.getElementById("invoice-countdown").style.backgroundColor = "#e3e35f";   // yellow
+                    } else {
+                        document.getElementById("invoice-countdown").style.backgroundColor = "#bee35f";   // green
+                    }
+                    if (json.invnow) {
+                        document.getElementById("invoice").innerHTML = "Invoice Sent!";
+                    } else {
+                        document.getElementById("invoice").innerHTML = "Awaiting Next Invoice...";
+                    }
+
+                    getTimeSlots(hpk);
+                } else if (json.type == "completed"){
+                    log("completed: ");
+                    document.getElementById("session-message").innerHTML = "Session has ended";
+                    document.getElementById("session-controls").style.display = "none";
+                    document.getElementById("session-progress").style.width = json.durperc + "%";
+                    document.getElementById("session-progress").style.backgroundColor = "#e6e6e6";   // gray
+                    document.getElementById("invoice-countdown").style.backgroundColor = "#e6e6e6";   // gray
+                    getTimeSlots(hpk);
+
+                } else if (json.type == "paused"){
+                    // yoda: "Paused, the session is."
+                    sessionPaused();
+                    getTimeSlots(hpk);
+                } else if (json.type == "resumed"){
+                    // yoda: "Resumed, the session is."
+                    sessionResumed();
+                    getTimeSlots(hpk);
+                } else if (json.type == "ended"){
+                    // yoda: "Ended, the session is."
+                    document.getElementById("session-message").innerHTML = "Session has ended";
+                    document.getElementById("session-controls").style.display = "none";
+                    document.getElementById("session-progress").style.width = json.durperc + "%";
+                    document.getElementById("session-progress").style.backgroundColor = "#e6e6e6";   // gray
+                    document.getElementById("invoice-countdown").style.backgroundColor = "#e6e6e6";   // gray
+                    getTimeSlots(hpk);
+                    sessionEnded();
+                } else if (json.type == "create-invoice"){
+                    document.getElementById("invoice").innerHTML = JSON.stringify(json);
+                    // makeInvoice(json.amtInSats).then((invoice) => {
+                    //     log("Invoice Sent!");
+                    //     connection.send(JSON.stringify({action: "receive-invoice", creator: json.creator, reservor: json.reservor, invoice: invoice }));
+                    // }).catch((error) => {
+                    //     log("Invoice Error: " + error);
+                    // });
+                    // connection.send(JSON.stringify({action: "receive-invoice", creator: json.creator, reservor: json.reservor, invoice: { amount: json.amtInSats } }));
+                } else if (json.type == "pay-invoice"){
+                    document.getElementById("invoice").innerHTML = JSON.stringify(json);
+
+                    if (json.invoice) { 
+                        window.webln.sendPayment(json.invoice).then((response) => {
+                            log("Invoice Paid!");
+                            connection.send(JSON.stringify({action: "pay-receipt", creator: json.creator, reservor: json.reservor, slotID: json.slotID, response: response }));
+                        }).catch((error) => {
+                            log("Invoice Error: " + error);
+                            connection.send(JSON.stringify({action: "user-rejected", creator: json.creator, reservor: json.reservor, slotID: json.slotID, response: "User rejected" }));
+                        });
+                    } else {
+                        log("Error sending payment: no invoice request");
+                    }
+                    // connection.send(JSON.stringify({action: "pay-receipt", creator: json.creator, reservor: json.reservor, receipt: "some receipt" }));
+                } else if (json.type == "rejected"){
+                    // yoda: "Rejected, the payment is."
+                    document.getElementById("session-message").innerHTML = "Payment Rejected...";
+                    // document.getElementById("session-controls").style.display = "none";
+                    // document.getElementById("session-progress").style.width = json.durperc + "%";
+                    // document.getElementById("session-progress").style.backgroundColor = "#e6e6e6";   // gray
+                    // document.getElementById("invoice-countdown").style.backgroundColor = "#e6e6e6";   // gray
+                    getTimeSlots(hpk);
+                    // sessionEnded();
+                } else if (json.type == "userInfo"){
+                    setUserInfo(json.userInfo);
+                } else if (json.type == "crypto-price"){
+                    log("crypto-price: " + json.price);
+                    document.getElementById("webln-div").innerHTML = json.price;
+                    bitcoinPrice = parseInt(json.price);
+                    invoicePeriod = parseInt(json.invoicePeriod);
+                    recalcQuote("recalc");
+                } else {
+                    log(event.data);
+                }
+                return;
+            } catch (e) {
+                log("not json");
+            }
+
+
+        /*
+            if (event.data.substring(2,7) == ":INV:") {
+                if (event.data.substring(0,2) == nick) {
+                    alert("Invoice Sent!");
+                } else {
+                    var invoice = event.data.substring(7);
+                    document.getElementById("invoice").innerHTML = invoice;
+                }
+            } else {
+                var logger = document.querySelector("#logger");
+                logger.innerHTML = logger.innerHTML + "\n" + event.data;
+                logger.scrollTop = logger.scrollHeight;
+            }
+        */
+
+        };
+
+        // document.querySelector("form").addEventListener("submit", event => {
+        //     event.preventDefault();
+        //     let nick = document.querySelector("#nick").value;
+        //     let message = document.querySelector("#message").value;
+        //     connection.send(nick + ":" + message);
+        //     document.querySelector("#message").value = "";
+        // });
+
+        if (document.getElementById('reconnect')) {
+            document.getElementById('reconnect').style.visibility = 'hidden';
+        } 
+        
+        if (document.getElementById('disconnect')) {
+            document.getElementById('disconnect').style.visibility = 'visible';
+        }
+    };
+
+    function disconnect() {
+        log("disconnecting...");
+        connection.close();
+        document.getElementById('reconnect').style.visibility = 'visible';
+        document.getElementById('disconnect').style.visibility = 'hidden';
+    };
+
+    // document.getElementById('message').onkeydown = function(e){
+    //     if(e.keyCode == 13){
+    //         //log("enter key...");
+    //         // let addr = document.querySelector("#addr").value;
+    //         // let message = document.querySelector("#message").value;
+    //         // connection.send(nick + ":" + message);
+    //         // document.querySelector("#message").value = "";
+    //     } else {
+    //         //log("other key...");
+    //     }
+    // };
+
+    reconnect();
+
+
+    </script>
+    <script type="module">
+        // import {launchModal} from 'https://esm.sh/@getalby/bitcoin-connect@3.2.0?bundle-deps'; // jsdelivr.net, skypack.dev also work
+        // import {launchModal} from 'bitcoin-connect/bitcoin-connect.js'; // local
+    
+        // use Bitcoin connect API normally...
+        // launchModal();
+    
+        // or if you just want access to the web components:
+        // import 'https://esm.sh/@getalby/bitcoin-connect@3.2.0';
+    </script>
+  
+    </head>
+    <body style="font-family: Tahoma, Geneva, sans-serif" onload="existsWebLN();">
+
+    <script>
+
+    // document.getElementById("prereqs").style.display = "none";
+    // document.getElementById("mainsection").style.display = "none";
+
+    </script>
+    <!-- <div id="conn-status" style="background-color: #32d40d; position: fixed; top: 0; left: 0; width: 100%; height: 4px;"></div> -->
+    <!-- <div id="conn-status" style="background-color: #d40d1e; position: fixed; top: 0; left: 0; width: 100%; height: 4px;"></div> -->
+    <!-- <div id="conn-status" style="background-color: #eae30c; position: fixed; top: 0; left: 0; width: 100%; height: 4px;"></div> -->
+    <div id="conn-status" style="background-color: #e6e6e6; position: fixed; top: 0; left: 0; width: 100%; height: 4px;"></div>
+    <div id="slotsboard" style="display: block; width: 800px; margin: 0 auto; background: #000; color: #fff;" >
+        <center>
+        <p>&nbsp</p>
+        <h4 id="slotsboard-title">time-into-crypto</h4>
+        <h3>Consulting Timeslots Available</h3>
+        <p>
+            These are the currently available timeslots. <br />
+        </p>
+        <table id="slotsboard-table" border="0" cellspacing="0" cellpadding="0">
+            <tr id="rowsbtr" style="font-family: monospace; font-size: smaller;" >
+                <th align="center">Year</th><th align="center">-</th>
+                <th align="center">Mon</th><th align="center">-</th>
+                <th align="center">Day</th><th align="center">&nbsp;</th>
+                <th align="center">Hour</th><th align="center">:</th>
+                <th align="center">Min</th><th align="center">&nbsp;</th>
+                <th align="center">Dur</th><th align="center">&nbsp;</th>
+                <th align="center">Sats/Min</th><th align="center">&nbsp;</th>
+                <th align="center" id="board-currency-header">Quote</th><th align="center">&nbsp;</th>
+                <th align="left">Link</th>
+            </tr>
+        </table>
+        <p>&nbsp</p>
+        </center>
+    </div>
+    <div id="prereqs">
+        <h3>Prerequisites</h3>
+        <p>
+            TimeIntoCrypto requires that a Lightning Node Provider be installed. <br />
+            The <a href="https://getalby.com/" target="get_ext">Alby Browser Extension</a> is recommended. <br />
+            Install an extension and reload this page. <br />
+        </p>
+    </div>
+    <div id="config-settings" style="display: none;" >
+        <table border="0" cellspacing="1" cellpadding="1">
+            <!-- <tr><th align="right">Key</th><th>Value</th></tr> -->
+            <tr><td align="right">Host:Port</td><td colspan = "2"><input type="text" id="hostport-field" size="66" style="font-family: monospace" placeholder="hostname:port" /></td></tr>
+            <tr><td align="right">Base64 Cert</td><td colspan = "2"><input type="text" id="base64cert-field" size="66" style="font-family: monospace" placeholder="Base64 encoded RPC Certificate. (LS0...)"/></td></tr>
+            <tr><td align="right">Base64 Macaroon</td><td colspan = "2"><input type="text" id="base64macaroon-field" size="66" style="font-family: monospace" placeholder="Base64 encoded Macaroon with invoice privileges ONLY. (AgED...)" /></td></tr>
+        </table>
+    </div>
+
+    <div id="mainsection" style="display: none;" >
+
+    <div id="tokendiv" style="display: none;" >
+    <table border="0" cellspacing="1" cellpadding="2">
+    <tr><th align="right">Name</th><th>Description</th></tr>
+    <tr><td align="right"><a href="/oauth/test-token" target="getauth">Auth</a></td><td><textarea rows="4" cols="60" id="bearertoken" disabled>No Bearer Token Found.</textarea></td></tr>
+    <!-- <tr><td align="right">Body</td><td><textarea rows="14" cols="60" id="postbody">{{body}}</textarea></td></tr> -->
+    </table>
+    </div>
+
+    <!-- <button id="onboard">Loading...</button> <div id="chainlist" style="display: inline">Add a Theta network to your MetaMask with <a href="https://chainlist.org/?search=theta" target="chainlist">ChainList</a></div><br /> -->
+    <!-- <textarea rows="1" cols="80" id="nick"></textarea> -->
+    <table border="0" cellspacing="1" cellpadding="0">
+        <!-- <tr><th align="right">Name</th><th>Description</th></tr> -->
+        <tr><td align="right"><button id="board-toggle" onclick="toggleBoard()">vvv</button>&nbsp;&nbsp;Nick:</td><td><input type="text" id="nick" size="14" style="font-family: monospace" /></td><td align="right"><button id="config-button" onclick="toggleConfig()">Config</button>
+            <select name="currency" id="currency-input" disabled>
+                <option value="usd">USD</option>
+                <option value="can">CAN</option>
+                <option value="eur">EUR</option>
+            </select>
+            <input type="text" id="relay-input" size="40" style="text-align: right;" style="font-family: monospace" disabled/></td></tr>
+        <tr><td align="right">LNPubKey:</td><td colspan = "2"><input type="text" id="lnpubkey-field" size="66" style="font-family: monospace" /></td></tr>
+        <tr><td align="right">NostrPubKey:</td><td colspan = "2"><input type="text" id="nostrpubkey-field" size="66" style="font-family: monospace" /></td></tr>
+    </table>
+    <!-- <input cols="80" id="nick"></input> -->
+    <form id="chatform">
+        <textarea rows="1" cols="72" id="message"></textarea>
+        <button type="submit" id="send">Send</button>
+        <br />
+        <textarea rows="7" cols="80" id="logger"></textarea>
+        <br />
+        <textarea rows="5" cols="80" id="invoice">No Invoice Yet!</textarea>
+        <br />
+    </form>
+
+    <script>
+            function addTSrow() {
+                recalcQuote("recalc");
+                var bstable = document.getElementById("time-slots-table");
+                var ts_year = parseInt((document.getElementById("ts-year")).value);
+                var ts_month = parseInt((document.getElementById("ts-month")).value);
+                var ts_day = parseInt((document.getElementById("ts-day")).value);
+                var ts_hour = parseInt((document.getElementById("ts-hour")).value);
+                var ts_minute = parseInt((document.getElementById("ts-minute")).value);
+                var ts_duration = parseInt((document.getElementById("ts-duration")).value);
+                var ts_satsmin = parseInt((document.getElementById("ts-satsmin")).value);
+                var ts_usd = parseFloat((document.getElementById("ts-usd")).value);
+
+                var rowDate = new Date(ts_year, ts_month - 1, ts_day, ts_hour, ts_minute, 0, 0);
+                var ts_start = rowDate.getTime();
+
+                ts_start = Math.floor(ts_start / 1000);
+
+                addTimeSlot(hpk, ts_start, ts_duration, ts_satsmin, ts_usd);
+                getTimeSlots(hpk);
+
+
+            }
+
+            function delTSrow(slotID) {
+                console.log("deleting slotID: " + slotID);
+                delTimeSlot(hpk, slotID);
+            }
+
+            function resTSrow(slotID) {
+                console.log("reserving slotID: " + slotID + " for " + nostrPubKey);
+                resTimeSlot(nostrPubKey, slotID);
+            }
+
+            function cnfTSrow(slotID, slotStart, slotDateStr, reservor) {
+                console.log("confirming slotID: " + slotID + " from " + nostrPubKey + " at " + slotDateStr + " for " + reservor);
+                cnfTimeSlot(nostrPubKey, slotID, slotStart, slotDateStr, reservor);
+            }
+
+            function isNumberKey(evt) {
+                console.log(JSON.stringify(evt, null, 2));
+                var charCode = (evt.which) ? evt.which : evt.keyCode
+                if (typeof charCode == "undefined") {
+                    return false;
+                }
+                console.log("charCode: " + charCode);
+                if ((charCode == 8) || (charCode == 9)) return true; // backspace or tab
+                if ((charCode < 48) || (charCode > 57)) {
+                    return false;
+                }
+                return true;
+            }
+
+            function recalcQuote(event = "recalc")
+            {  
+                const isNum = isNumberKey(event);
+                if (isNum || (event == "recalc")) {
+                    var currency = (document.getElementById("currency-input").value).toUpperCase();
+                    var ts_duration = parseInt((document.getElementById("ts-duration")).value);
+                    var ts_satsmin = parseInt((document.getElementById("ts-satsmin")).value);
+                    log("ts_duration: " + ts_duration + " ts_satsmin: " + ts_satsmin + " bitcoinPrice: " + bitcoinPrice);
+                    var quoteAmt = (((ts_duration * ts_satsmin) / 100000000) * bitcoinPrice).toFixed(2);
+                    var invoicePeriodMins = (invoicePeriod / 60).toFixed(0);
+                    var numInvoices = Math.round(ts_duration / invoicePeriodMins);
+                    var quotePerInvoice = (quoteAmt / numInvoices).toFixed(2);  
+                    // let quoteAmtStr = "$" + quoteAmt;
+                    document.getElementById("ts-usd").value = quoteAmt;
+                    console.log("quoteAmt: " + quoteAmt);
+                    document.getElementById("session-message").innerHTML = currency + " " + quoteAmt + " will be billed over " + numInvoices + " invoices of " + currency + " " + quotePerInvoice + " each every " + invoicePeriodMins + " minutes";     
+                }
+                return isNum;
+            }
+
+            function setTSdefaults() {
+
+                const n = new Date();
+                // const d = new Date(n.getTime() + (60 * 60 * 1000 * 24) + (29 * 60 * 1000));  // 24 hours and 29 minutes from now
+                // Testing with 1 minute from now
+                const d = new Date(n.getTime() + (1 * 60 * 1000));  // 1 minutes from now
+                var y = d.getFullYear();
+                var m = d.getMonth() + 1;
+                if (m < 10) { m = "0" + m; }
+                var day = d.getDate();
+                if (day < 10) { day = "0" + day; }
+                var h = d.getHours();
+                if (h < 10) { h = "0" + h; }
+                var min = d.getMinutes();
+                // Testing, don't allow minutes to be 30
+                // if (min > 30) { min = "30"; } else { min = "00"; }
+                // console.log("y: " + y + " m: " + m + " day: " + day + " h: " + h + " min: " + min);
+
+                var ts_year = document.getElementById("ts-year"); ts_year.value = y;
+                var ts_month = document.getElementById("ts-month"); ts_month.value = m;
+                var ts_day = document.getElementById("ts-day"); ts_day.value = day;
+                var ts_hour = document.getElementById("ts-hour"); ts_hour.value = h;
+                var ts_minute = document.getElementById("ts-minute"); ts_minute.value = min;
+ 
+            }
+
+            function sessionPaused() {
+                const sP = document.getElementById("session-pause");
+                const sR = document.getElementById("session-resume");
+                const sS = document.getElementById("session-stop");
+                const sT = document.getElementById("session-terminate");
+                const prog = document.getElementById("session-progress");
+                sP.disabled = true;
+                sR.disabled = false;
+                sS.disabled = false;
+                sT.disabled = true;
+                prog.style.backgroundColor = "#e3e35f";
+            }
+
+            function sessionPause() {
+                log("sessionPause");
+                sessionPaused()
+                doPause();
+            }
+
+            function sessionResumed() {
+                const sP = document.getElementById("session-pause");
+                const sR = document.getElementById("session-resume");
+                const sS = document.getElementById("session-stop");
+                const sT = document.getElementById("session-terminate");
+                const prog = document.getElementById("session-progress");
+                sP.disabled = false;
+                sR.disabled = true;
+                sS.disabled = true;
+                sT.disabled = true;
+                sT.style.visibility = "hidden";
+                prog.style.backgroundColor = "#bee35f";
+            }
+
+            function sessionResume() {
+                log("sessionResume");
+                sessionResumed();
+                doResume();
+            }
+
+            function sessionStop() {
+                log("sessionStop");
+                const sP = document.getElementById("session-pause");
+                const sR = document.getElementById("session-resume");
+                const sS = document.getElementById("session-stop");
+                const sT = document.getElementById("session-terminate");
+                const prog = document.getElementById("session-progress");
+                sP.disabled = true;
+                sR.disabled = false;
+                sS.disabled = true;
+                sT.disabled = false;
+                sT.style.visibility = "visible";
+                prog.style.backgroundColor = "#e98383";
+            }
+
+            function sessionEnded() {
+                const sP = document.getElementById("session-pause");
+                const sR = document.getElementById("session-resume");
+                const sS = document.getElementById("session-stop");
+                const sT = document.getElementById("session-terminate");
+                const prog = document.getElementById("session-progress");
+                sP.disabled = true;
+                sR.disabled = true;
+                sS.disabled = true;
+                sT.disabled = true;
+                sT.style.visibility = "hidden";
+                prog.style.backgroundColor = "#e6e6e6";
+            }
+            
+            function sessionTerminate() {
+                log("sessionTerminate");
+                sessionEnded();
+                doEnd();
+            }   
+
+    </script>
+    <table id="time-slots-table" border="0" cellspacing="0" cellpadding="0">
+    <tr id="rowtr" style="font-family: monospace; font-size: smaller;" >
+        <th align="center">Year</th><th align="center">-</th>
+        <th align="center">Mon</th><th align="center">-</th>
+        <th align="center">Day</th><th align="center">&nbsp;</th>
+        <th align="center">Hour</th><th align="center">:</th>
+        <th align="center">Min</th><th align="center">&nbsp;</th>
+        <th align="center">Dur</th><th align="center">&nbsp;</th>
+        <th align="center">Sats/Min</th><th align="center">&nbsp;</th>
+        <th align="center" id="slots-currency-header">Cur</th><th align="center">&nbsp;</th>
+        <th align="left">Action</th>
+    </tr>
+    <tr id="row00" style="font-family: monospace, visibility="hidden">
+        <td align="right"><input id="ts-year"     type="text" size="4" value="2024"/></td><td align="center">-</td>
+        <td align="right"><input id="ts-month"    type="text" size="2" value="03"/></td><td align="center">-</td>
+        <td align="right"><input id="ts-day"      type="text" size="2" value="12"/></td><td align="center">&nbsp;</td>
+        <td align="right"><input id="ts-hour"     type="text" size="2" value="13"/></td><td align="center">:</td>
+        <td align="right"><input id="ts-minute"   type="text" size="2" value="00"/></td><td align="center">&nbsp;</td>
+        <td align="right"><input id="ts-duration" type="text" size="4" value="10" style="text-align: right;" onkeyup="return recalcQuote()" /></td><td align="center">&nbsp;</td>
+        <td align="right"><input id="ts-satsmin"  type="text" size="6" value="10000" style="text-align: right;" onkeyup="return recalcQuote()" /></td><td align="center">&nbsp;</td>
+        <td align="center"><input id="ts-usd"     type="text" size="7" value="calc" disabled style="text-align: right;"/></td><td align="center">&nbsp;</td>
+        <td align="left">
+            <button id="test01" onclick="addTSrow()"  style="visibility: block">Add TimeSlot</button>
+            <!-- <button id="test01" onclick="addTSrow()"  style="visibility: hidden">Reserve</button> -->
+        </td>
+    </tr>
+    </table>
+
+    <p id="demo"></p>
+
+    <div id="session-controls" style="display: none;">
+    <div id="session-progress" style="background-color: #e6e6e6; position: relative; top: 0; left: 0; width: 100%; height: 4px; "></div>
+    <button id="session-pause" style="background-color: #e3e35f; visibility: visible;" onclick="sessionPause()">Pause</button>
+    <button id="session-resume" style="background-color: #bee35f; visibility: visible;" onclick="sessionResume()" disabled>Resume</button>
+    <button id="session-stop" style="background-color: #e98383; visibility: visible;" onclick="sessionStop()" disabled>Stop</button>
+    <button id="session-terminate" style="background-color: #ff0000; visibility: hidden;" onclick="sessionTerminate()" disabled>Confirm Termination of Session</button>
+    <div id="invoice-countdown" style="background-color: #e6e6e6; position: relative; top: 0; left: 0; width: 100%; height: 4px;"></div>
+    </div>
+    <p id="session-message">No Session Message Yet!</p>
+
+    <button onclick="myVar = setInterval(myTimer ,1000)">Start Timer</button>
+    <button onclick="clearInterval(myVar)">Stop Timer</button>
+    <button id="disconnect" onclick="disconnect()">Disconnect</button>
+    <button id="reconnect" onclick="reconnect()" style="visibility: hidden">Connect</button>
+
+    <button id="test01" onclick="doTestWS01()" style="visibility: hidden">Test 01 : DM</button>
+    <button id="test02" onclick="doTestWS02()" style="visibility: hidden">Test 02 : EV</button>
+    <!-- <button id="test02" onclick="testLN02()" style="visibility: hidden">Test 02 : GetInfo</button> -->
+    <button id="test03" onclick="testLN03()" style="visibility: hidden">Test 03 : MakeInvoice</button>
+    <button id="test04" onclick="testLN04()" style="visibility: hidden">Test 04 : SendPayment</button>
+    <button id="test05" onclick="testLN05()" style="visibility: hidden">Test 05 : SignMessage</button>
+    <button id="test06" onclick="testLN06()" style="visibility: hidden">Test 06 : VerifyMessage</button>
+
+    <br />
+
+    <button id="mode-button" onclick="relocateHome()">Mode: Unknown</button> <a id="schedule-link" href="http://localhost:8080/?hpk=unknown&relay=wss%3A%2F%2Frelay.primal.net">Schedule Link: http://localhost:8080/?hpk=unknown&relay=wss://relay.primal.net</a>
+
+    <ul id="chat"></ul>
+
+    </div>
+
+    <!-- <script src="main.js?tenantid={{tenantid}}"></script> -->
+    <!-- <script
+    src="https://unpkg.com/webln@0.3.2/dist/webln.min.js"
+    integrity="sha384-MpjpvOQqXz9nCoLUS/sR0bhLwGYuNPMOBN50jsqhnqAzDq0GiOI0u6oC5fHitzI2"
+    crossorigin="anonymous"
+    ></script> -->
+
+    <script>
+    var input = document.getElementById("message");
+    input.addEventListener("keypress", function(event) {
+    if (event.key === "Enter") {
+        event.preventDefault();
+        document.getElementById("send").click();
+    }
+    });
+
+    function getCookie(cname) {
+    let name = cname + "=";
+    let ca = document.cookie.split(';');
+    for(let i = 0; i < ca.length; i++) {
+        let c = ca[i];
+        while (c.charAt(0) == ' ') {
+        c = c.substring(1);
+        }
+        if (c.indexOf(name) == 0) {
+        return c.substring(name.length, c.length);
+        }
+    }
+    return "";
+    }
+
+    var bearerToken = "I am a BEARer";
+
+    function checkForAuthToken()
+    {
+        bearerToken = getCookie("access_token");
+
+        if (bearerToken != "") {
+            document.getElementById("bearertoken").value = bearerToken;
+
+        } else {
+            document.getElementById("bearertoken").value = "Click Auth to get a valid bearer token.\nThen return here and reload the page.";
+        }
+    }
+
+    </script>
+
+    <script src="webln_handlers.js"></script>
+    
+    <!-- <script src="metamask-onboarding.bundle.js"></script> -->
+    <!-- <script src="metamask-onboarding.js"></script> -->
+    <!-- <script>updateButton();</script> -->
+
+    <script>
+        var dm = {};
+        // https://guides.getalby.com/developer-guide/v/alby-browser-extension-apis/
+        async function getNostrPubKey() {
+            nostrPubKey = await window.nostr.getPublicKey();
+            // Your code here
+            log("NostrPubKey: " + nostrPubKey);
+            document.getElementById("nostrpubkey-field").value = nostrPubKey;
+            // getUserInfo(nostrPubKey);
+            getHrefParts();
+            setScheduleLink();
+            
+            if ((typeof npk) != "undefined") {
+                if (npk != nostrPubKey) {
+                    npk = nostrPubKey;
+                    (async function() {
+                        await getLNPubKey(null, null);
+                    })();
+                }
+            }
+
+            
+            if (hpk != nostrPubKey) {
+                var damsg = "I'm checking out your timeslots. " + Math.floor(Math.random() * 100);
+                log(damsg)
+                dm = await postDMto(damsg, hpk); // to Receiver
+            }
+            // dm = await postDMto("This is a secret to horologger " + Math.floor(Math.random() * 10), "6771ce6cf4a229db78fa8fcf092c943580d186145baa1218b60070f116ba99ff"); // to Horologger
+            // dm = await postDMto("This is a secret to vacuum8 " + Math.floor(Math.random() * 10), "7bdef7f39298dc57996c9b7adc08db1eeaf02208437ba01bf4cbe2e8c17a72a5"); // to Vacuum8
+            
+            // ev = await makeEVto("This is a public message");
+
+            getTimeSlots(hpk);
+
+            getUserInfo(nostrPubKey);
+            setScheduleLink();
+
+            disconnect();
+            reconnect();
+        }
+
+        function accountChangedHandler() {
+            log("Account Changed!");
+
+            (async function() {
+                await getNostrPubKey();
+            })();
+            (async function() {
+                await getLNPubKey(null, null);
+            })();
+            getHrefParts();
+            setScheduleLink();
+            // getUserInfo(nostrPubKey);
+            // getHrefParts();
+            // getTimeSlots(nostrPubKey);   // This will get triggered upon reconnect after account change
+
+        }
+
+        if ((typeof nostr != 'undefined') && (nostr.on)) { 
+            log('nostr supported'); 
+            nostr.on("accountChanged", accountChangedHandler); // callback is executed once account is changed in provided with multiple accounts
+        } else {
+            log('nostr not supported'); 
+        }
+
+        async function deferDMto(msg, pubkey, notify_time) {
+            log("deferDMto: " + msg + " to " + pubkey + " notify_time: " + notify_time);
+            // GenAI suggested this
+            // return new Promise((resolve, reject) => {
+            //     setTimeout(() => {
+            //         resolve(postDMto(msg, pubkey, trigger));
+            //     }, 1000);
+            // });
+
+            return await postDMto(msg, pubkey, notify_time);
+        }
+
+        async function postDMto(msg, pubkey, notify_time = 0) {
+            log("postDMto: " + msg + " to " + pubkey);
+            const encrypted = await window.nostr.nip04.encrypt(pubkey, msg);
+            const now = Math.round((new Date()).getTime() / 1000);
+            var deferred_time = now;
+            var action = "post";
+            if (notify_time > 0) {
+                deferred_time = notify_time;
+                action = "defer";
+            }
+
+            const event = {
+                created_at: deferred_time,  // Pretend that the Nostr event was created at this time we'll send it later
+                kind: 4,
+                content: encrypted,
+                tags: [['p',pubkey]],
+            };
+            const signedEvent = await window.nostr.signEvent(event);
+            // log("postDMto: " + JSON.stringify(signedEvent, null, 2));
+            log("echo '" + JSON.stringify(signedEvent) + "' | nak event wss://relay.primal.net");
+
+            const eventTask = {
+                action: action,
+                type: 2,    // EventType.NOSTR_DM
+                relay: "wss://relay.primal.net",
+                msg: msg,
+                trigger: deferred_time,
+                event: signedEvent
+            }
+            stashed = eventTask;
+            connection.send(JSON.stringify(eventTask));
+
+            return signedEvent;
+        }
+
+        var stashed = {};
+
+
+        function doTestWS01() {
+            log("doTestWS01");
+            // (async function() {
+            //     await testWS01();
+            // })();
+            log("stashed: " + JSON.stringify(stashed, null, 2));
+            connection.send(JSON.stringify(stashed));
+        }
+
+        async function testWS01() {
+            log("testWS01");
+            var ev = {};
+            // ev = await makeEVto("Cool test message");
+            const sm = "Soooo secret " + Math.floor(Math.random() * 100);
+            ev = await postDMto(sm, hpk); // to Receiver
+
+            const eventTask = {
+                action: "post",
+                relay: "wss://relay.primal.net",
+                msg: sm,
+                event: ev
+            }
+
+            connection.send(JSON.stringify(eventTask));
+        }
+
+        async function makeEVto(msg) {
+            const event = {
+                created_at: Math.round((new Date()).getTime() / 1000),
+                kind: 1,
+                content: msg,
+                tags: [],
+            };
+            const signedevt = await window.nostr.signEvent(event);
+            // log("makeEVto: " + JSON.stringify(signedevt, null, 2));
+            // log("makeEVto: " + JSON.stringify(signedevt));
+            log("echo '" + JSON.stringify(signedevt) + "' | nak event wss://relay.primal.net");
+            return signedevt;
+        }
+
+        async function doTestWS02() {
+            log("doTestWS02");
+            var normal_event = {};
+            // (async function() {
+            //     normal_event = await testWS02();
+            // })();
+            normal_event = await testWS02();
+            connection.send(JSON.stringify(normal_event));
+        }
+
+        async function testWS02() {
+            log("testWS02");
+            var ev = {};
+            // ev = await makeEVto("Cool test message");
+            const ne = "Normie event " + Math.floor(Math.random() * 100);
+            ev = await makeEVto(ne);
+
+            const eventTask = {
+                action: "post",
+                relay: "wss://relay.primal.net",
+                ne: ne,
+                event: ev
+            }
+            return eventTask;
+        }
+
+
+
+    </script>
+    <ul id="server-time">Server Time!</ul>
+    <ul id="receiver-info">Who Receiving!</ul>
+
+    <ul id="webln-div">Nothing Yet!</ul>
+
+    <!-- Bitcoin Connect components are now available -->
+    <bc-button></bc-button>
+
+    <script>
+        function myTimer() {
+            const timenow = Math.round((new Date()).getTime() / 1000);
+            document.getElementById("demo").innerHTML = timenow;
+        };
+
+        setCurrencySelect();
+
+        // let el = document.getElementById('ts-satsmin');
+        
+        // el.addEventListener('keydown', function (event) {
+        //     const key = event.key;
+        //     if (key === "Backspace" || key === "Delete") {
+        //         document.getElementById('receiver-info').innerHTML = key + ' is Pressed!';
+        //         recalcQuote("recalc");
+        //     }
+        // }); 
+
+        // document.getElementById("board-currency-header").innerHTML = (document.getElementById("currency-input").value).toUpperCase();
+        document.getElementById("slots-currency-header").innerHTML = (document.getElementById("currency-input").value).toUpperCase();
+        recalcQuote("recalc");
+
+    </script>
+    
+
+    </body>
+</html>

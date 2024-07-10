@@ -1,0 +1,11 @@
+node_modules/
+docker_build.txt
+noter.txt
+db.sql
+.vscode/
+data/
+.DS_Store
+yarn.lock
+package-lock.json
+ln-service.js
+setenv.sh
