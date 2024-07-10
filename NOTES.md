@@ -1,10 +1,10 @@
 Inspired by https://github.com/jensgertsen/sparkkiosk
 ```sh
-docker buildx build --platform linux/arm64,linux/amd64 --tag horologger/time-into-crypto:v0.0.5 --output "type=registry" .
+docker buildx build --platform linux/arm64,linux/amd64 --tag horologger/time-into-sats:v0.0.5 --output "type=registry" .
 ```
 Zilla Testing Locally
 ```
-docker buildx build --platform linux/arm64 --tag horologger/time-into-crypto:v0.0.5 --load .
+docker buildx build --platform linux/arm64 --tag horologger/time-into-sats:v0.0.5 --load .
 
 ```
 
@@ -27,16 +27,16 @@ LND_GRPC_MACAROON=/lnd/data/chain/bitcoin/mainnet/admin.macaroon
 LND_GRPC_PORT=10009
 
 sudo ./umbrel/scripts/repo checkout https://github.com/horologger/umbrelappstore.git
-sudo ./umbrel/scripts/app install isviable-time-into-crypto
-sudo ./umbrel/scripts/app start isviable-time-into-crypto
-sudo ./umbrel/scripts/app restart isviable-time-into-crypto
+sudo ./umbrel/scripts/app install isviable-time-into-sats
+sudo ./umbrel/scripts/app start isviable-time-into-sats
+sudo ./umbrel/scripts/app restart isviable-time-into-sats
 
 ```
 On Zilla
 ```sh
 su - alunde
-docker pull horologger/time-into-crypto:v0.0.5
-mkdir -p ~/.time-into-crypto/data
+docker pull horologger/time-into-sats:v0.0.5
+mkdir -p ~/.time-into-sats/data
 ```
 First run
 ```
@@ -44,15 +44,15 @@ docker run \
 -e PORT=21284 \
 -v data:/data \
 -p 21284:21284 \
---name time-into-crypto \
--it horologger/time-into-crypto:v0.0.5 
+--name time-into-sats \
+-it horologger/time-into-sats:v0.0.5 
 ```
 
 On Ragnar
 ```sh
 su - alunde
-docker pull horologger/time-into-crypto:v0.0.5
-mkdir -p ~/.time-into-crypto/data
+docker pull horologger/time-into-sats:v0.0.5
+mkdir -p ~/.time-into-sats/data
 ```
 First run
 ```
@@ -66,16 +66,16 @@ docker run \
 -v lnd-data:/lnd:ro \
 -v cln-data:/cln:ro \
 -p 21284:21284 \
---name time-into-crypto \
--it horologger/time-into-crypto:v0.0.5 
+--name time-into-sats \
+-it horologger/time-into-sats:v0.0.5 
 
 docker run \
 -e APP_PASSWORD=TimeInto \
 -e PORT=21284 \
 -v data:/data \
 -p 21284:21284 \
---name time-into-crypto \
--it horologger/time-into-crypto:v0.0.5 
+--name time-into-sats \
+-it horologger/time-into-sats:v0.0.5 
 
 ```
 Better runs
@@ -84,23 +84,23 @@ docker run \
 -e LND_ADDRESS=ragnar:10009 \
 -e LND_CERT_FILE="/lnd/tls.cert" \
 -e LND_MACAROON_FILE="/lnd/data/chain/bitcoin/mainnet/admin.macaroon" \
--e DATABASE_URI="/data/time-into-crypto.db" \
+-e DATABASE_URI="/data/time-into-sats.db" \
 -v data:/data \
 -v lnd-data:/lnd:ro \
 -v cln-data:/cln:ro \
 -p 8080:8080 \
---name time-into-crypto \
--it horologger/time-into-crypto:v0.0.5 
+--name time-into-sats \
+-it horologger/time-into-sats:v0.0.5 
 
 ```
 Inspect
 ```sh
-docker exec -it time-into-crypto /bin/bash
+docker exec -it time-into-sats /bin/bash
 ```
 Clean up
 ```sh
-docker stop time-into-crypto
-docker rm time-into-crypto
+docker stop time-into-sats
+docker rm time-into-sats
 ```
 
 

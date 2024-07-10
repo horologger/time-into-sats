@@ -50,7 +50,7 @@ module.exports = {
 
 const Database = require("better-sqlite3");
 // const db = new Database('data/crypto-rates.db', { verbose: console.log }); // or ':memory:'
-const db = new Database('data/time-into-crypto.db'); // or ':memory:'
+const db = new Database('data/time-into-sats.db'); // or ':memory:'
 db.pragma('synchronous = 2'); // Force write-through to file system
 
 // Importing necessary modules

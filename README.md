@@ -1,4 +1,4 @@
-# sparkkiosk
+# time-into-sats
 Minimal LNURL kiosk app.
 
 Use sparkkiosk to enable lightning payments from printed QR codes in selfservice kiosks / cafés or other places where POS interaction is not needed or an option.

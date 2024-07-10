@@ -1,5 +1,5 @@
 {
-    "name": "time-into-crypto",
+    "name": "time-into-sats",
     "old_deps": {
         "@getalby/bitcoin-connect": "latest",
         "@getalby/sdk": "latest",
