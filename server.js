@@ -1154,12 +1154,12 @@ function manageSessions(timeNow) {
     db.dumpTimeSlots("start", true);
 
     // Find upcoming time slots
-    var slots = db.getAllTimeSlots4Period("start", true, timeNow, timeNow + (5 * 60), "confirmed");
+    var slots = db.getAllTimeSlots4Period("start", true, timeNow - 9, timeNow + (5 * 60), "confirmed");
     slots.forEach(async slot => {
         const insecs = slot.start - timeNow;
         console.log("upcoming: " + slot.id + ": " + slot.start + " >= " + timeNow + " " + insecs + " seconds away...");
         notify_listeners(slot.creator, JSON.stringify({ type: "pending-session", insecs: insecs }));
-        if (insecs <= 5) {
+        if (insecs <= 9) {
             if (slot.state == "confirmed") {
                 db.setTimeSlotState(slot.id, "in_progress");
             }
